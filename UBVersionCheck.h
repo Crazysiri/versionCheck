@@ -20,9 +20,11 @@
 //下载链接
 @property (copy,nonatomic) NSString *downloadUrl;
 
-//更新消息
+// alert 更新消息
 @property (copy,nonatomic) NSString *message;
 
+// alert title 默认 更新提示
+@property (copy,nonatomic) NSString *title;
 
 
 //取消按钮文案

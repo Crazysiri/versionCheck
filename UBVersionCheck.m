@@ -43,13 +43,13 @@
     if (version && [self isBigger:version]) {
         
         UIAlertAction *cancel = [UIAlertAction actionWithTitle:version.cancelButtonTitle style:UIAlertActionStyleCancel handler:nil];
-        UIAlertAction *confirm = [UIAlertAction actionWithTitle:version.confirmButtonTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        UIAlertAction *confirm = [UIAlertAction actionWithTitle:version.confirmButtonTitle style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
             if (version.downloadUrl) {
                 [[UIApplication sharedApplication] openURL:[NSURL URLWithString:version.downloadUrl]];
             }
         }];
         
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil message:version.message preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:version.title message:version.message preferredStyle:UIAlertControllerStyleAlert];
         
         [alert addAction:confirm];
         
@@ -71,18 +71,18 @@
     [ud setBool:NO forKey:@"has_new_version_key"];
     
     NSString *versionNumber = [[NSBundle mainBundle]infoDictionary][@"CFBundleShortVersionString"];
-    NSArray *bundleComponents = [versionNumber componentsSeparatedByString:@"."];
-    NSArray *serverComponents = [version.version componentsSeparatedByString:@"."];
+    NSString *bundleVersionJoin = [versionNumber stringByReplacingOccurrencesOfString:@"." withString:@""];
+    NSString *serverVersionJoin = [version.version stringByReplacingOccurrencesOfString:@"." withString:@""];
     
-    NSString *bundleVersionJoin = [bundleComponents componentsJoinedByString:@""];
-    NSString *serverVersionJoin = [serverComponents componentsJoinedByString:@""];
+    NSInteger bundleLength = bundleVersionJoin.length;
+    NSInteger serverLength = serverVersionJoin.length;
     
-    if (bundleComponents.count < serverComponents.count) {
-        for (int i = 0; i < serverComponents.count - bundleComponents.count; i++ ) {
+    if (bundleLength < serverLength) {
+        for (int i = 0; i < serverLength - bundleLength; i++ ) {
             bundleVersionJoin = [bundleVersionJoin stringByAppendingString:@"0"];
         }
     } else {
-        for (int i = 0; i < bundleComponents.count - serverComponents.count; i++ ) {
+        for (int i = 0; i < bundleLength - serverLength; i++ ) {
             serverVersionJoin = [serverVersionJoin stringByAppendingString:@"0"];
         }
     }
@@ -124,6 +124,7 @@
     if (self) {
         self.cancelButtonTitle = @"下次再说";
         self.confirmButtonTitle = @"立即更新";
+        self.title = @"更新提示";
     }
     return self;
 }
