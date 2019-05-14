@@ -8,6 +8,8 @@
 
 #import "UBVersionCheck.h"
 
+#import <UIKit/UIKit.h>
+
 @implementation UBVersionCheck
 + (void)checkNewVersionAndShowAlertIfNeeded:(void (^)(void (^ callback)(UBVersion *)))request  show:(void(^)(BOOL show))show {
     if (request) {
@@ -71,23 +73,42 @@
     [ud setBool:NO forKey:@"has_new_version_key"];
     
     NSString *versionNumber = [[NSBundle mainBundle]infoDictionary][@"CFBundleShortVersionString"];
-    NSString *bundleVersionJoin = [versionNumber stringByReplacingOccurrencesOfString:@"." withString:@""];
-    NSString *serverVersionJoin = [version.version stringByReplacingOccurrencesOfString:@"." withString:@""];
     
-    NSInteger bundleLength = bundleVersionJoin.length;
-    NSInteger serverLength = serverVersionJoin.length;
+    NSArray *bundleVersionComps = [versionNumber componentsSeparatedByString:@"."];
+    NSArray *serverVersionComps = [version.version componentsSeparatedByString:@"."];
     
-    if (bundleLength < serverLength) {
-        for (int i = 0; i < serverLength - bundleLength; i++ ) {
-            bundleVersionJoin = [bundleVersionJoin stringByAppendingString:@"0"];
+    //以最大的 做为循环 参数
+    NSUInteger count = bundleVersionComps.count > serverVersionComps.count ? bundleVersionComps.count : serverVersionComps.count;
+    
+    BOOL serverIsBigger = NO;
+    
+    //左对齐进行判断
+    /*
+     
+     1.0
+     1.0.1
+     
+     */
+    for (int i = 0; i < count; i++) {
+        
+        NSInteger bundleComp = 0;
+        if (i < bundleVersionComps.count) {
+            bundleComp = [bundleVersionComps[i] integerValue];
         }
-    } else {
-        for (int i = 0; i < bundleLength - serverLength; i++ ) {
-            serverVersionJoin = [serverVersionJoin stringByAppendingString:@"0"];
+        
+        NSInteger serverComp = 0;
+        if (i < serverVersionComps.count) {
+            serverComp = [serverVersionComps[i] integerValue];
+        }
+        
+        if (serverComp > bundleComp) {
+            serverIsBigger = YES;
+            break;
         }
     }
     
-    if (serverVersionJoin.integerValue > bundleVersionJoin.integerValue) {
+    
+    if (serverIsBigger) {
         [ud setBool:YES forKey:@"has_new_version_key"];
         [ud setObject:version.version forKey:@"new_version_string_key"];
         [ud synchronize];
