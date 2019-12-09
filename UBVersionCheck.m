@@ -101,6 +101,10 @@
             serverComp = [serverVersionComps[i] integerValue];
         }
         
+        if (bundleComp > serverComp) {
+            break;
+        }
+        
         if (serverComp > bundleComp) {
             serverIsBigger = YES;
             break;
