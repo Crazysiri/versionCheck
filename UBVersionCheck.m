@@ -11,10 +11,22 @@
 #import <UIKit/UIKit.h>
 
 @implementation UBVersionCheck
-+ (void)checkNewVersionAndShowAlertIfNeeded:(void (^)(void (^ callback)(UBVersion *)))request  show:(void(^)(BOOL show))show {
+
++ (void)checkNewVersion:(void (^)(void (^ callback)(UBVersion *version)))request completion:(void(^)(BOOL hasNewVersion))completion {
     if (request) {
-        void (^callback)(UBVersion *) = ^(UBVersion *version){
-            if ([self showAlertIfNeed:version]) {
+        void (^callback)(UBVersion *) = ^(UBVersion *version) {
+            if (completion) {
+                completion([self isBigger:version]);
+            }
+        };
+        request(callback);
+    }
+}
+
++ (void)checkNewVersionAndShowAlertIfNeeded:(void (^)(void (^ callback)(UBVersion *,BOOL mute)))request  customShow:(void(^)(void))customShow show:(void(^)(BOOL show))show {
+    if (request) {
+        void (^callback)(UBVersion *,BOOL) = ^(UBVersion *version,BOOL mute){
+            if ([self showAlertIfNeed:version mute:mute customShow:customShow]) {
                 if (show) {
                     show (YES);
                 }
@@ -41,26 +53,39 @@
     }
 }
 
-+ (BOOL)showAlertIfNeed:(UBVersion *)version {
-    if (version && [self isBigger:version]) {
+
++ (BOOL)showAlertIfNeed:(UBVersion *)version customShow:(void(^)(void))customShow {
+    [self showAlertIfNeed:version mute:NO customShow:customShow];
+}
+
+
+//version 版本 mute 是否需要弹窗 customShow 自定义显示UI弹窗
+//如果mute = YES 即使最新比本地大 也不更新
+//[self isBigger:version 放在前面因为 需要让代码执行 [ud setBool:YES forKey:@"has_new_version_key"]; 才能在后面获取到是否有新版本
++ (BOOL)showAlertIfNeed:(UBVersion *)version mute:(BOOL)mute customShow:(void(^)(void))customShow {
+    if ([self isBigger:version] && !mute && version) {
         
-        UIAlertAction *cancel = [UIAlertAction actionWithTitle:version.cancelButtonTitle style:UIAlertActionStyleCancel handler:nil];
-        UIAlertAction *confirm = [UIAlertAction actionWithTitle:version.confirmButtonTitle style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
-            if (version.downloadUrl) {
-                [[UIApplication sharedApplication] openURL:[NSURL URLWithString:version.downloadUrl]];
+        if (customShow) { //自定义alert
+            customShow();
+        } else {
+            UIAlertAction *cancel = [UIAlertAction actionWithTitle:version.cancelButtonTitle style:UIAlertActionStyleCancel handler:nil];
+            UIAlertAction *confirm = [UIAlertAction actionWithTitle:version.confirmButtonTitle style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+                if (version.downloadUrl) {
+                    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:version.downloadUrl]];
+                }
+            }];
+            
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:version.title message:version.message preferredStyle:UIAlertControllerStyleAlert];
+            
+            [alert addAction:confirm];
+            
+            //如果是非强制更新 可取消
+            if (!version.forceUpdate) {
+                [alert addAction:cancel];
             }
-        }];
-        
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:version.title message:version.message preferredStyle:UIAlertControllerStyleAlert];
-        
-        [alert addAction:confirm];
-        
-        //如果是非强制更新 可取消
-        if (!version.forceUpdate) {
-            [alert addAction:cancel];
+            
+            [UIApplication.sharedApplication.delegate.window.rootViewController presentViewController:alert animated:YES completion:nil];
         }
-        
-        [UIApplication.sharedApplication.delegate.window.rootViewController presentViewController:alert animated:YES completion:nil];
         
         return YES;
     }
