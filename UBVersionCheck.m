@@ -10,86 +10,115 @@
 
 #import <UIKit/UIKit.h>
 
+static BOOL __version_check_request_cached = NO;
+
+@interface UBVersionCheck ()
+
+@property (nonatomic, strong) UBVersion *version;
+
+@property (nonatomic,assign) BOOL requesting;
+
+@property (nonatomic, strong) NSMutableArray *callbacks;
+
+
+@end
+
 @implementation UBVersionCheck
 
-+ (void)checkNewVersion:(void (^)(void (^ callback)(UBVersion *version)))request completion:(void(^)(BOOL hasNewVersion))completion {
-    if (request) {
-        void (^callback)(UBVersion *) = ^(UBVersion *version) {
-            if (completion) {
-                completion([self isBigger:version]);
-            }
-        };
-        request(callback);
-    }
++ (id)shared {
+    static UBVersionCheck *check;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        check = [[UBVersionCheck alloc] init];
+    });
+    return check;
 }
 
-+ (void)checkNewVersionAndShowAlertIfNeeded:(void (^)(void (^ callback)(UBVersion *,BOOL mute)))request  customShow:(void(^)(void))customShow show:(void(^)(BOOL show))show {
-    if (request) {
-        void (^callback)(UBVersion *,BOOL) = ^(UBVersion *version,BOOL mute){
-            if ([self showAlertIfNeed:version mute:mute customShow:customShow]) {
-                if (show) {
-                    show (YES);
-                }
-            } else {
-                if (show) {
-                    show (NO);
-                }
-            }
-        };
-        request(callback);
-    }
-}
-
-+ (void)checkNewVersionAndGotoDownloadIfNeeded:(void (^)(void (^ callback)(UBVersion *)))request {
-    if (request) {
-        void (^callback)(UBVersion *) = ^(UBVersion *version){
-            if (version && [self isBigger:version]) {
-                if (version.downloadUrl) {
-                    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:version.downloadUrl]];
-                }
-            }
-        };
-        request(callback);
-    }
-}
-
-
-+ (BOOL)showAlertIfNeed:(UBVersion *)version customShow:(void(^)(void))customShow {
-    [self showAlertIfNeed:version mute:NO customShow:customShow];
-}
-
-
-//version 版本 mute 是否需要弹窗 customShow 自定义显示UI弹窗
-//如果mute = YES 即使最新比本地大 也不更新
-//[self isBigger:version 放在前面因为 需要让代码执行 [ud setBool:YES forKey:@"has_new_version_key"]; 才能在后面获取到是否有新版本
-+ (BOOL)showAlertIfNeed:(UBVersion *)version mute:(BOOL)mute customShow:(void(^)(void))customShow {
-    if ([self isBigger:version] && !mute && version) {
-        
-        if (customShow) { //自定义alert
-            customShow();
-        } else {
-            UIAlertAction *cancel = [UIAlertAction actionWithTitle:version.cancelButtonTitle style:UIAlertActionStyleCancel handler:nil];
-            UIAlertAction *confirm = [UIAlertAction actionWithTitle:version.confirmButtonTitle style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
-                if (version.downloadUrl) {
-                    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:version.downloadUrl]];
-                }
-            }];
-            
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:version.title message:version.message preferredStyle:UIAlertControllerStyleAlert];
-            
-            [alert addAction:confirm];
-            
-            //如果是非强制更新 可取消
-            if (!version.forceUpdate) {
-                [alert addAction:cancel];
-            }
-            
-            [UIApplication.sharedApplication.delegate.window.rootViewController presentViewController:alert animated:YES completion:nil];
+- (void)checkAsync:(void(^)(BOOL hasNewVersion,UBVersion *version))completion cache:(BOOL)cache {
+    
+    if (cache && __version_check_request_cached) {
+        if (completion) {
+            completion([self.class hasNewVersion],self.version);
         }
-        
-        return YES;
+        return;
     }
-    return NO;
+    
+    __weak typeof(self) weakself = self;
+    
+    if (self.requesting) {
+        [self.callbacks addObject:completion];
+        return;
+    }
+    
+    if (self.requestCallback) {
+        
+        self.requesting = YES;
+        
+        void (^callback)(BOOL,UBVersion *) = ^(BOOL success,UBVersion *version) {
+            
+            weakself.requesting = NO;
+                        
+            __version_check_request_cached = YES;
+            
+            for (void (^cb)(BOOL,UBVersion *) in weakself.callbacks) {
+                cb([weakself.class isBigger:version],version);
+            }
+            
+            [weakself.callbacks removeAllObjects];
+            
+            if (completion) {
+                completion([weakself.class isBigger:version],version);
+            }
+        };
+        
+        self.requestCallback(callback);
+    }
+}
+
+- (void)checkAndShowAlert:(BOOL)mute {
+
+    __weak typeof(self) weakself = self;
+
+    [self checkAsync:^(BOOL hasNewVersion, UBVersion *version) {
+        if (!mute && hasNewVersion) {
+            [weakself.class showAlert:version];
+        }
+    } cache:NO];
+}
+
+- (void)checkAndShowCustomAlert:(void(^)(UBVersion *version))customShow {
+    __weak typeof(self) weakself = self;
+
+    [self checkAsync:^(BOOL hasNewVersion, UBVersion *version) {
+        if (hasNewVersion && customShow) {
+            customShow(version);
+        }
+    } cache:NO];
+}
+
+- (void)checkAndGotoDownloadUrlDirectly {
+
+    __weak typeof(self) weakself = self;
+    [self checkAsync:^(BOOL hasNewVersion, UBVersion *version) {
+        if (hasNewVersion) {
+            if (version.downloadUrl) {
+                [[UIApplication sharedApplication] openURL:[NSURL URLWithString:version.downloadUrl]];
+            }
+        }
+    } cache:NO];
+}
+
+///是否有新版本
+/*
+ checkNewVersion... 方法之后才有值
+ */
++ (BOOL)hasNewVersion {
+    return [NSUserDefaults.standardUserDefaults boolForKey:@"has_new_version_key"];
+}
+
+///新版本号
++ (NSString *)versionNew {
+    return [NSUserDefaults.standardUserDefaults objectForKey:@"new_version_string_key"];
 }
 
 
@@ -98,7 +127,8 @@
     [ud setBool:NO forKey:@"has_new_version_key"];
     
     NSString *versionNumber = [[NSBundle mainBundle]infoDictionary][@"CFBundleShortVersionString"];
-    
+    [ud setObject:versionNumber forKey:@"new_version_string_key"];
+
     NSArray *bundleVersionComps = [versionNumber componentsSeparatedByString:@"."];
     NSArray *serverVersionComps = [version.version componentsSeparatedByString:@"."];
     
@@ -149,20 +179,35 @@
     
 }
 
-
-///是否有新版本
-/*
- checkNewVersion... 方法之后才有值
- */
-+ (BOOL)hasNewVersion {
-    return [NSUserDefaults.standardUserDefaults boolForKey:@"has_new_version_key"];
+//version 版本
++ (void)showAlert:(UBVersion *)version {
+    UIAlertAction *cancel = [UIAlertAction actionWithTitle:version.cancelButtonTitle style:UIAlertActionStyleCancel handler:nil];
+    UIAlertAction *confirm = [UIAlertAction actionWithTitle:version.confirmButtonTitle style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        if (version.downloadUrl) {
+            [[UIApplication sharedApplication] openURL:[NSURL URLWithString:version.downloadUrl]];
+        }
+    }];
+    
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:version.title message:version.message preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addAction:confirm];
+    
+    //如果是非强制更新 可取消
+    if (!version.forceUpdate) {
+        [alert addAction:cancel];
+    }
+    
+    [UIApplication.sharedApplication.delegate.window.rootViewController presentViewController:alert animated:YES completion:nil];
 }
 
-///新版本号
-+ (NSString *)versionNew {
-    return [NSUserDefaults.standardUserDefaults objectForKey:@"new_version_string_key"];
-}
 
+
+- (NSMutableArray *)callbacks {
+    if (!_callbacks) {
+        _callbacks = [NSMutableArray array];
+    }
+    return _callbacks;
+}
 
 @end
 
